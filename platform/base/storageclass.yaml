@@ -1,0 +1,11 @@
+# Premium SSD with Retain and volume expansion (design decision D15).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: tpg-premium-retain
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: Premium_ZRS
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer

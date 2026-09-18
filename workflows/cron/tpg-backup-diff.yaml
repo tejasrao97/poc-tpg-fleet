@@ -1,0 +1,26 @@
+# Daily differential backup, Monday to Saturday 00:00 UTC (design decision D16).
+# Argo Workflows v4 removed the singular "schedule" field: use "schedules".
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: tpg-backup-diff
+  namespace: argo
+spec:
+  schedules:
+    - "0 0 * * 1-6"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  workflowSpec:
+    workflowTemplateRef:
+      name: tpg-backup
+    arguments:
+      parameters:
+        - name: backupType
+          value: differential
+        - name: clusters
+          value: all
+        - name: scheduledOnly
+          value: "true"

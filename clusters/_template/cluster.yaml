@@ -1,0 +1,15 @@
+# Cluster defaults shared by every target cluster.
+#
+# The tpg-instances ApplicationSet passes this file to charts/tpg-instance as
+# the first value file; the workflows read it for cluster settings. Override
+# any key for one cluster under clusters.<name> in clusters/fleet.yaml.
+cluster:
+  # Upper bound for tpg-scale-instance (read replicas per instance)
+  maxReadReplicas: 3
+
+backup:
+  # Empty: pg-backups-<cluster> (the container Terraform creates per target)
+  container: ""
+  endpoint: blob.core.windows.net
+  fullRetention: 4
+  diffRetention: 6

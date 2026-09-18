@@ -1,0 +1,129 @@
+# Day 1: point-in-time restore of one Postgres instance to a UTC timestamp on the selected clusters. Restores to a new instance unless inPlace=true and confirmInPlace equals the instance name.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: tpg-restore-pitr
+  namespace: argo
+  annotations:
+    workflows.argoproj.io/description: >-
+      Day 1: point-in-time restore of one Postgres instance to a UTC timestamp on the selected clusters. Restores to a new instance unless inPlace=true and confirmInPlace equals the instance name.
+spec:
+  serviceAccountName: tpg-workflow
+  entrypoint: main
+  onExit: exit-handler
+  parallelism: 10
+  arguments:
+    parameters:
+    # ---- mandatory (no default; the validate step lists the valid choices)
+    - name: clusters
+      description: "Comma-separated registered clusters that run the instance"
+      value: ""
+    - name: instance
+      description: "Postgres instance to restore"
+      value: ""
+    - name: targetTime
+      description: "UTC recovery target, for example 2026-09-01T10:30:00Z"
+      value: ""
+    # ---- optional
+    - name: inPlace
+      value: "false"
+      enum: ["false", "true"]
+    - name: confirmInPlace
+      value: ""
+    - name: bestEffort
+      value: "false"
+    - name: restoreTimeoutSeconds
+      value: "7200"
+    - name: toolsImage
+      value: alpine/k8s:1.35.8
+  volumes:
+    - name: scripts
+      configMap:
+        name: tpg-scripts
+        defaultMode: 0755
+  templates:
+  - name: main
+    steps:
+    - - name: validate
+        template: validate
+    - - name: init
+        templateRef:
+          name: tpg-lib
+          template: init-run
+    - - name: discover
+        templateRef:
+          name: tpg-lib
+          template: discover
+        arguments:
+          parameters:
+            - name: clusters
+              value: "{{workflow.parameters.clusters}}"
+    - - name: restore
+        template: restore-cluster
+        arguments:
+          parameters:
+            - name: cluster
+              value: "{{item.name}}"
+        withParam: "{{steps.discover.outputs.parameters.inventory}}"
+  - name: validate
+    container:
+      image: "{{workflow.parameters.toolsImage}}"
+      command: [bash, /scripts/validate-params.sh, restore]
+      env:
+        - {name: P_CLUSTERS, value: "{{workflow.parameters.clusters}}"}
+        - {name: P_INSTANCE, value: "{{workflow.parameters.instance}}"}
+        - {name: P_TARGET_TIME, value: "{{workflow.parameters.targetTime}}"}
+        - {name: P_IN_PLACE, value: "{{workflow.parameters.inPlace}}"}
+        - {name: P_BEST_EFFORT, value: "{{workflow.parameters.bestEffort}}"}
+        - {name: P_TIMEOUT, value: "{{workflow.parameters.restoreTimeoutSeconds}}"}
+      volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+  - name: restore-cluster
+    inputs:
+      parameters:
+        - name: cluster
+    outputs:
+      parameters:
+        - name: result
+          valueFrom:
+            path: /tmp/result
+            default: UNKNOWN
+    metrics:
+      prometheus:
+        - name: tpg_restore_result
+          help: "Restore result per cluster"
+          labels:
+            - key: cluster
+              value: "{{inputs.parameters.cluster}}"
+            - key: instance_name
+              value: "{{workflow.parameters.instance}}"
+            - key: result
+              value: "{{outputs.parameters.result}}"
+          counter:
+            value: "1"
+    container:
+      image: "{{workflow.parameters.toolsImage}}"
+      command: [bash, /scripts/restore-pitr.sh]
+      args:
+        - "{{workflow.name}}"
+        - "{{inputs.parameters.cluster}}"
+        - "{{workflow.parameters.instance}}"
+        - "{{workflow.parameters.targetTime}}"
+        - "{{workflow.parameters.inPlace}}"
+        - "{{workflow.parameters.confirmInPlace}}"
+        - "{{workflow.parameters.bestEffort}}"
+        - "{{workflow.parameters.restoreTimeoutSeconds}}"
+      volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+  - name: exit-handler
+    steps:
+    - - name: report
+        templateRef:
+          name: tpg-lib
+          template: report
+        arguments:
+          parameters:
+            - name: mode
+              value: cluster

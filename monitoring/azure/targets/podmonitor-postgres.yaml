@@ -1,0 +1,21 @@
+# Azure Monitor managed Prometheus: scrape postgres-exporter on every data pod.
+apiVersion: azmonitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: postgres-instances
+  namespace: kube-system
+spec:
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      type: data
+      app: postgres
+  podTargetLabels:
+    - postgres-instance
+  podMetricsEndpoints:
+    - port: "metrics"
+      interval: 30s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
